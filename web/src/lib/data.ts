@@ -57,7 +57,8 @@ export async function load(): Promise<Data> {
 	const [usage, history] = await Promise.all([get<UsageEntry[]>('/api/usage'), get<History>('/api/history')]);
 	const fetchedAt = Date.now();
 
-	// Accounts in /usage order (sorted by email), then any only found in the history.
+	// The cards show the accounts of /usage, sorted by email. Accounts only found
+	// in the history still get their own colour for the charts.
 	const byId = new Map<string, Account>();
 	const account = (id: string, email: string) => {
 		let a = byId.get(id);
@@ -74,17 +75,18 @@ export async function load(): Promise<Data> {
 			a.live[keys[u.window]] = { pct: u.utilization, at: u.resets_at ? Date.parse(u.resets_at) : null };
 		}
 	}
-	for (const h of history.accounts) account(h.account, h.email);
 	const accounts = [...byId.values()];
+	for (const h of history.accounts) account(h.account, h.email);
 
-	return { accounts, series: grid(accounts, history), fetchedAt };
+	return { accounts, series: grid([...byId.values()], history, fetchedAt), fetchedAt };
 }
 
-function grid(accounts: Account[], history: History): Series[] {
+// The grid runs up to the fetch, so a silence at the end shows as a gap too.
+function grid(accounts: Account[], history: History, fetchedAt: number): Series[] {
 	const { samples } = history;
 	if (!samples.length) return [];
 	const start = Math.floor((samples[0][0] * 1000) / STEP) * STEP;
-	const end = Math.ceil((samples[samples.length - 1][0] * 1000) / STEP) * STEP;
+	const end = Math.ceil(Math.max(samples[samples.length - 1][0] * 1000, fetchedAt) / STEP) * STEP;
 	const n = (end - start) / STEP + 1;
 	const t = new Float64Array(n);
 	for (let i = 0; i < n; i++) t[i] = start + i * STEP;

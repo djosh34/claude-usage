@@ -137,7 +137,7 @@
 				<div class="transition-opacity duration-200 motion-reduce:transition-none {busy ? 'opacity-45' : ''}">
 					<Chart series={data.series} key={c.key} label={c.title} defaultPreset={c.preset} />
 				</div>
-			{:else}
+			{:else if data.fetchedAt}
 				<p class="mt-2.5 text-[13px] leading-[1.35] text-muted">No data</p>
 			{/if}
 		</section>

@@ -83,7 +83,6 @@ func newHandler(proxyURL, key string) (http.Handler, error) {
 	mux.Handle("GET /", http.FileServerFS(page))
 	mux.Handle("GET /api/usage", forward(client, proxyURL+"/usage", key))
 	mux.Handle("GET /api/history", forward(client, proxyURL+"/history", key))
-	mux.Handle("GET /api/", http.NotFoundHandler())
 	return mux, nil
 }
 

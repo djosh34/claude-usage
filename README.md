@@ -4,7 +4,7 @@ A small mobile web page that shows Claude account usage from CLIProxyAPI.
 
 For every Claude account it shows the percentage used of the 5-hour and weekly
 limits with their reset times, and a chart of each window over time. The page is
-read-only and only loads data when you press Refresh.
+read-only and loads data when it opens and when you press Refresh.
 
 It is a SvelteKit page (`web/`, static build) embedded in a Go server. The server
 serves the page and forwards two calls to a [CLIProxyAPI fork](https://github.com/djosh34/CLIProxyAPI)
