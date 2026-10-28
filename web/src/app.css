@@ -1,0 +1,46 @@
+@import 'tailwindcss';
+
+@theme {
+	--color-page: #faf9f5;
+	--color-ink: #1c1b18;
+	--color-ink-2: #5e5d59;
+	--color-muted: #8a8880;
+	--color-hair: #e6e4dc;
+	--color-axis: #cfccc1;
+	--color-press: #f3f1ea;
+	--color-acct-1: #c6613f;
+	--color-acct-1-track: #f1ddd4;
+	--color-acct-2: #3b6cb4;
+	--color-acct-2-track: #d9e3f1;
+	--font-serif: 'Iowan Old Style', 'Charter', 'Source Serif 4', 'Source Serif Pro', Georgia, serif;
+	--font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+@layer base {
+	/* Scrolling stays plain: no rubber-band, no scroll anchoring adjustments,
+	   no double-tap zoom; the scroll position only moves under the finger. */
+	html {
+		-webkit-text-size-adjust: 100%;
+		-webkit-tap-highlight-color: transparent;
+		background: var(--color-page);
+		overscroll-behavior: none;
+		overflow-anchor: none;
+		touch-action: manipulation;
+	}
+	body {
+		overscroll-behavior: none;
+		background: var(--color-page);
+		color: var(--color-ink);
+		font: 15px/1.45 var(--font-sans);
+		-webkit-font-smoothing: antialiased;
+	}
+	button {
+		-webkit-tap-highlight-color: transparent;
+	}
+}
+
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
