@@ -1,12 +1,13 @@
 <script lang="ts">
 	import Chart from '../lib/Chart.svelte';
-	import { load, type Series } from '../lib/data';
+	import { load, type Data } from '../lib/data';
 	import { fmtAgo, fmtDay, fmtIn, fmtTime } from '../lib/format';
 
-	let data = $state.raw<Series[]>(load());
+	let data = $state.raw<Data>({ accounts: [], series: [], fetchedAt: 0 });
 	let loadedAt = $state(Date.now());
 	let now = $state(Date.now());
 	let busy = $state(false);
+	let failed = $state<string | null>(null);
 
 	// Restarted on every refresh so the label ticks on whole seconds since then.
 	$effect(() => {
@@ -15,29 +16,33 @@
 		return () => clearInterval(id);
 	});
 
-	// Stand-in for refetching /usage and /history.
-	function refresh() {
+	// Fetches /api/usage and /api/history. Only the button and the first load call it.
+	async function refresh() {
 		if (busy) return;
 		busy = true;
-		setTimeout(() => {
-			data = load();
-			loadedAt = now = Date.now();
+		try {
+			data = await load();
+			loadedAt = now = data.fetchedAt;
+			failed = null;
+		} catch (e) {
+			failed = e instanceof Error ? e.message : String(e);
+		} finally {
 			busy = false;
-		}, 700);
+		}
 	}
+	refresh();
 
 	const windows = $derived(
-		data.map((a) => {
-			const i = a.t.length - 1;
-			return {
-				...a,
-				rows: [
-					{ name: '5-hour', pct: a.h5[i], at: a.fiveEnd, when: fmtTime(a.fiveEnd) },
-					{ name: 'Weekly', pct: a.wk[i], at: a.weekEnd, when: `${fmtDay(a.weekEnd)} ${fmtTime(a.weekEnd)}` }
-				]
-			};
-		})
+		data.accounts.map((a) => ({
+			...a,
+			rows: [
+				{ name: '5-hour', w: a.live.h5, when: (t: number) => fmtTime(t) },
+				{ name: 'Weekly', w: a.live.wk, when: (t: number) => `${fmtDay(t)} ${fmtTime(t)}` }
+			]
+		}))
 	);
+	// The charts need at least two points in time to draw.
+	const charted = $derived(data.series.length > 0 && data.series[0].t.length > 1);
 </script>
 
 <main
@@ -48,7 +53,7 @@
 			<h1 class="m-0 font-serif text-[30px] leading-[1.1] font-normal tracking-[-0.01em]">Claude usage</h1>
 			<!-- Fixed box: the ticking text can never reflow anything. -->
 			<p class="mt-1.5 h-[19px] w-40 overflow-hidden text-[13px] leading-[19px] whitespace-nowrap text-muted tabular-nums">
-				{fmtAgo(now - loadedAt)}
+				{data.fetchedAt ? fmtAgo(now - loadedAt) : busy ? 'Loading' : 'Not loaded'}
 			</p>
 		</div>
 		<button
@@ -73,34 +78,54 @@
 		</button>
 	</header>
 
+	{#if failed}
+		<p class="mt-4 text-[13px] leading-[1.35] text-ink-2" role="alert">
+			Could not load usage: {failed}.
+		</p>
+	{/if}
+
 	<section class="mt-7 border-t border-hair" aria-label="Accounts">
-		{#each windows as a (a.email)}
+		{#each windows as a (a.id)}
 			<article class="border-b border-hair pt-[18px] pb-5">
-				<h3 class="mb-3.5 flex min-w-0 items-center gap-2.5 text-sm font-medium">
-					<i class="h-[3px] w-4 flex-none rounded-sm" style:background={a.color}></i>
+				<h3 class="mb-3.5 flex min-w-0 items-center gap-2.5 text-sm font-medium {a.error ? 'text-muted' : ''}">
+					<i class="h-[3px] w-4 flex-none rounded-sm" style:background={a.error ? 'var(--color-axis)' : a.color}></i>
 					<span class="truncate">{a.email}</span>
 				</h3>
-				<div class="grid grid-cols-2 gap-5">
-					{#each a.rows as w (w.name)}
-						<div>
-							<p class="text-[13px] text-ink-2">{w.name}</p>
-							<p class="mt-0.5 mb-2.5 text-[40px] leading-none font-semibold tracking-[-0.03em]">
-								{Math.round(w.pct)}<small class="ml-px text-xl font-medium tracking-normal text-ink-2">%</small>
-							</p>
-							<div
-								class="h-1 overflow-hidden rounded-sm"
-								style:background={a.track}
-								role="img"
-								aria-label="{Math.round(w.pct)} percent used"
-							>
-								<i class="block h-full rounded-sm" style:background={a.color} style:width="{Math.min(100, w.pct)}%"></i>
+				{#if a.error}
+					<p class="text-[13px] leading-[1.35] text-muted">Usage unavailable: {a.error}</p>
+				{:else}
+					<div class="grid grid-cols-2 gap-5">
+						{#each a.rows as r (r.name)}
+							<div>
+								<p class="text-[13px] text-ink-2">{r.name}</p>
+								{#if r.w}
+									<p class="mt-0.5 mb-2.5 text-[40px] leading-none font-semibold tracking-[-0.03em]">
+										{Math.round(r.w.pct)}<small class="ml-px text-xl font-medium tracking-normal text-ink-2">%</small>
+									</p>
+									<div
+										class="h-1 overflow-hidden rounded-sm"
+										style:background={a.track}
+										role="img"
+										aria-label="{Math.round(r.w.pct)} percent used"
+									>
+										<i class="block h-full rounded-sm" style:background={a.color} style:width="{Math.min(100, r.w.pct)}%"></i>
+									</div>
+									<p class="mt-[9px] text-[13px] leading-[1.35] text-ink-2">
+										{#if r.w.at === null}
+											Reset time unknown
+										{:else}
+											Resets <b class="font-medium text-ink">{r.when(r.w.at)}</b><br />{fmtIn(r.w.at - data.fetchedAt)}
+										{/if}
+									</p>
+								{:else}
+									<p class="mt-0.5 mb-2.5 text-[40px] leading-none font-semibold tracking-[-0.03em] text-muted">–</p>
+									<div class="h-1 rounded-sm bg-hair"></div>
+									<p class="mt-[9px] text-[13px] leading-[1.35] text-muted">No data</p>
+								{/if}
 							</div>
-							<p class="mt-[9px] text-[13px] leading-[1.35] text-ink-2">
-								Resets <b class="font-medium text-ink">{w.when}</b><br />{fmtIn(w.at - a.t[a.t.length - 1])}
-							</p>
-						</div>
-					{/each}
-				</div>
+						{/each}
+					</div>
+				{/if}
 			</article>
 		{/each}
 	</section>
@@ -108,11 +133,15 @@
 	{#each [{ key: 'h5', title: '5-hour window', preset: '1d' }, { key: 'wk', title: 'Weekly window', preset: '1w' }] as const as c (c.key)}
 		<section class="mt-9" aria-label={c.title}>
 			<h2 class="font-serif text-[21px] leading-[1.2] font-normal">{c.title}</h2>
-			<div class="transition-opacity duration-200 motion-reduce:transition-none {busy ? 'opacity-45' : ''}">
-				<Chart series={data} key={c.key} label={c.title} defaultPreset={c.preset} />
-			</div>
+			{#if charted}
+				<div class="transition-opacity duration-200 motion-reduce:transition-none {busy ? 'opacity-45' : ''}">
+					<Chart series={data.series} key={c.key} label={c.title} defaultPreset={c.preset} />
+				</div>
+			{:else}
+				<p class="mt-2.5 text-[13px] leading-[1.35] text-muted">No data</p>
+			{/if}
 		</section>
 	{/each}
 
-	<footer class="mt-9 text-xs text-muted">Pinch or drag a chart sideways to zoom and pan. Mockup with made-up numbers.</footer>
+	<footer class="mt-9 text-xs text-muted">Pinch or drag a chart sideways to zoom and pan.</footer>
 </main>

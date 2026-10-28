@@ -8,9 +8,7 @@ export default defineConfig({
 		tailwindcss(),
 		sveltekit({
 			adapter: adapter(),
-			output: { bundleStrategy: 'inline' },
-			// Published by host-plan at /claude-usage/mockup/
-			paths: { base: '/claude-usage/mockup', relative: true }
+			output: { bundleStrategy: 'inline' }
 		})
 	]
 });

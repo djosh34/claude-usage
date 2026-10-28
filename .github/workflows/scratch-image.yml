@@ -1,0 +1,118 @@
+# On PRs it runs the checks and builds the scratch image for both platforms.
+# On a push to main and on a dispatch of main it builds main, smoke-tests it
+# and pushes both platforms to GHCR under a tag that names the commit.
+name: scratch-image
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scratch-image-${{ github.event_name == 'pull_request' && github.ref || 'publish' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  IMAGE: djosh34/claude-usage
+
+jobs:
+  pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: web/package.json
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # The Go package embeds web/build, so the page is built first.
+      - name: Build the page
+        run: |
+          pnpm -C web install --frozen-lockfile
+          pnpm -C web build
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test ./...
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Build amd64 image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: claude-usage:smoke
+          build-args: COMMIT=${{ github.sha }}
+      - name: Smoke test
+        run: test "$(docker run --rm claude-usage:smoke --version)" = "$GITHUB_SHA"
+      - name: Build both platforms
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+          build-args: COMMIT=${{ github.sha }}
+
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      TAG: main-${{ github.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Build amd64 image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: claude-usage:smoke
+          build-args: COMMIT=${{ github.sha }}
+      - name: Smoke test
+        run: test "$(docker run --rm claude-usage:smoke --version)" = "$GITHUB_SHA"
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push both platforms
+        id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/${{ env.IMAGE }}:${{ env.TAG }}
+          build-args: COMMIT=${{ github.sha }}
+      - name: Record commit and digest
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          line="ghcr.io/$IMAGE:$TAG commit $GITHUB_SHA digest $DIGEST"
+          echo "$line"
+          echo "$line" >> "$GITHUB_STEP_SUMMARY"

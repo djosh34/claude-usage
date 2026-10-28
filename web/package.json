@@ -1,7 +1,8 @@
 {
-  "name": "claude-usage-mockup",
+  "name": "claude-usage",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.33.4",
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",

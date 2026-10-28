@@ -56,15 +56,21 @@
 
 	// Paths are built once per data load in data units (hours since d0, 0-100 %).
 	// Zoom and pan only change the group transform; strokes keep their width
-	// through vector-effect.
+	// through vector-effect. A stretch without data (NaN) breaks the line.
 	const paths = $derived(
 		series.map((s) => {
 			const v = s[key];
 			const n = v.length;
 			let d = '';
+			let pen = false;
 			for (let i = 0; i < n; i++) {
+				if (Number.isNaN(v[i])) {
+					pen = false;
+					continue;
+				}
 				if (i > 0 && i < n - 1 && v[i] === v[i - 1] && v[i] === v[i + 1]) continue;
-				d += `${d ? 'L' : 'M'}${((s.t[i] - s.t[0]) / HOUR).toFixed(3)} ${v[i].toFixed(1)}`;
+				d += `${pen ? 'L' : 'M'}${((s.t[i] - s.t[0]) / HOUR).toFixed(3)} ${v[i].toFixed(1)}`;
+				pen = true;
 			}
 			return d;
 		})
@@ -96,8 +102,8 @@
 	const ends = $derived(
 		series.map((s) => {
 			const i = s.t.length - 1;
-			return { color: s.color, t: s.t[i], v: s[key][i] };
-		})
+			return { id: s.id, color: s.color, t: s.t[i], v: s[key][i] };
+		}).filter((e) => !Number.isNaN(e.v))
 	);
 
 	// Readout: tap (touch) or hover (mouse) shows the values at one time.
@@ -111,7 +117,7 @@
 		return {
 			t,
 			x: x(t),
-			rows: series.map((s) => ({ color: s.color, name: s.email.split('@')[0], v: s[key][i] }))
+			rows: series.map((s) => ({ id: s.id, color: s.color, name: s.email.split('@')[0], v: s[key][i] }))
 		};
 	});
 	const tipLeft = $derived(ro ? Math.max(84, Math.min(W - 84, ro.x)) : 0);
@@ -278,7 +284,7 @@
 </div>
 <p class="mt-1.5 h-4 text-xs leading-4 whitespace-nowrap text-ink-2 tabular-nums" data-range>{range}</p>
 <ul class="mt-3 mb-1.5 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-ink-2">
-	{#each series as a (a.email)}
+	{#each series as a (a.id)}
 		<li class="flex items-center gap-[7px]">
 			<i class="h-[3px] w-4 rounded-sm" style:background={a.color}></i>{a.email}
 		</li>
@@ -330,7 +336,7 @@
 
 		<g clip-path="url(#{clipId})">
 			<g {transform}>
-				{#each paths as d, i (series[i].email)}
+				{#each paths as d, i (series[i].id)}
 					<path
 						{d}
 						fill="none"
@@ -343,7 +349,7 @@
 				{/each}
 			</g>
 		</g>
-		{#each ends as e (e.color)}
+		{#each ends as e (e.id)}
 			{#if e.t >= view.t0 && e.t <= view.t1}
 				<circle cx={x(e.t)} cy={y(e.v)} r="4" fill={e.color} class="stroke-page" stroke-width="2" />
 			{/if}
@@ -351,7 +357,7 @@
 
 		{#if ro}
 			<line x1={ro.x} x2={ro.x} y1={pad.t} y2={y(0)} class="stroke-ink-2" stroke-width="1" />
-			{#each ro.rows as r (r.color)}
+			{#each ro.rows.filter((r) => !Number.isNaN(r.v)) as r (r.id)}
 				<circle cx={ro.x} cy={y(r.v)} r="4" fill={r.color} class="stroke-page" stroke-width="2" />
 			{/each}
 		{/if}
@@ -363,10 +369,10 @@
 			style:left="{(tipLeft / W) * 100}%"
 		>
 			<div class="mb-1 text-muted">{fmtDay(ro.t)} {fmtDate(ro.t)}, {fmtTime(ro.t)}</div>
-			{#each ro.rows as r (r.color)}
+			{#each ro.rows as r (r.id)}
 				<div class="flex items-center gap-[7px]">
 					<i class="h-[3px] w-4 rounded-sm" style:background={r.color}></i>
-					<b class="min-w-[34px] font-semibold tabular-nums">{Math.round(r.v)}%</b>
+					<b class="min-w-[34px] font-semibold tabular-nums">{Number.isNaN(r.v) ? '–' : `${Math.round(r.v)}%`}</b>
 					<span class="text-ink-2">{r.name}</span>
 				</div>
 			{/each}
